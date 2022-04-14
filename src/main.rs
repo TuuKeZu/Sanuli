@@ -1,18 +1,22 @@
 use std::fs;
 use rand::seq::SliceRandom;
 use colored::*;
+use lazy_static::*;
+use std::sync::Mutex;
 
 struct Sanuli {
     word: String,
     chars: Vec<char>,
     guessed: Vec<String>,
-    used_chars: Vec<char>,
     tries: u8,
 }
 
 impl Sanuli{
     fn get_word(&self) -> String {
         self.word.clone()
+    }
+    fn get_chars(&self) -> Vec<char> {
+        self.chars.clone()
     }
 
     fn get_guessed(&self) -> Vec<String> {
@@ -28,35 +32,40 @@ impl Sanuli{
     }
 }
 
+
+lazy_static! {
+    static ref WORDS: Mutex<Vec<String>> = Mutex::new(vec![]);
+}
+
+
 fn main() {
-    let words = read_words("./full.txt");
-    println!("Found {} words.", words.len());
+    println!("Sanuli v0.1");
+    WORDS.lock().unwrap().extend(read_words("./full.txt"));
+
+    println!("Found {} words.",WORDS.lock().unwrap().len());
+    println!("---------------");
 
 
-    
-    let word: String = words.choose_multiple(&mut rand::thread_rng(), 1).cloned().collect();
+    let word: String = WORDS.lock().unwrap().choose_multiple(&mut rand::thread_rng(), 1).cloned().collect();
     let chars = word.chars().collect();
 
     let mut game = Sanuli {
         word: word,
         chars: chars,
         guessed: Vec::new(),
-        used_chars: Vec::new(),
         tries: 5
     };
 
-    println!("{:?}", game.chars);
-
-    render_game(game.get_guessed());
-    let mut input = get_input();
+    render_game(game.get_guessed(), game.get_chars());
+    let mut input = get_input(game.get_word());
 
     loop {
 
         
         if input.to_uppercase().trim() == game.get_word() {
             game.add_guessed(input.to_uppercase().trim());
-            render_game(game.get_guessed());
-            println!("You won!");
+            render_game(game.get_guessed(), game.get_chars());
+            println!("You Guessed the right word!");
             break;
         }
 
@@ -69,13 +78,13 @@ fn main() {
 
         game.increment_tries();
 
-        render_game(game.get_guessed());
-        input = get_input();
+        render_game(game.get_guessed(), game.get_chars());
+        input = get_input(game.get_word());
     }
     
 }
 
-fn get_input() -> String {
+fn get_input(word: String) -> String {
 
     println!("\nEnter your guess:");
 
@@ -87,11 +96,22 @@ fn get_input() -> String {
             .read_line(&mut guess)
             .expect("Failed to read your guess.");
 
-        if guess.chars().count() == 7 {
-            break;
+        let parsed = guess.trim();
+
+        if guess.chars().count() - 2 == word.chars().count() {
+
+            if !WORDS.lock().unwrap().contains(&parsed.to_uppercase()) {
+                println!("That is not a word!");
+                guess = String::new();
+            }
+            else{
+                break;
+            }
+
         }
+
         else{
-            println!("Invalid guess: {}", guess.chars().count());
+            println!("Invalid guess");
             guess = String::new();
         }
 
@@ -100,21 +120,41 @@ fn get_input() -> String {
     guess
 }
 
-fn render_game(guessed: Vec<String>) {
+fn render_game(guessed: Vec<String>, chars: Vec<char>) {
     // Render the current Game
-    println!(" _ _ _ _ _ ");
+    for _ in 0..chars.len() {
+        print!(" _");
+    }
+    print!("\n");
+    
     for i in 0..6 {
+        print!("|");
 
         if guessed.len() > i {
-            println!("|{}|{}|{}|{}|{}|", 
-            guessed[i].chars().nth(0).unwrap(),
-            guessed[i].chars().nth(1).unwrap(),
-            guessed[i].chars().nth(2).unwrap(),
-            guessed[i].chars().nth(3).unwrap(),
-            guessed[i].chars().nth(4).unwrap(), );
+            for j in 0..chars.len() {
+                let guessed_char = guessed[i].chars().nth(j).unwrap();
+
+                if chars.contains(&guessed_char) {
+
+                    if chars[j] == guessed_char {
+                        print!("{}|", guessed_char.to_string().green())
+                    }
+                    else{
+                        print!("{}|", guessed_char.to_string().yellow())
+                    }
+                }
+                else{
+                    print!("{}|", guessed_char.to_string())
+                }
+
+            }
+            print!("\n");
         }
         else{
-            println!("|_|_|_|_|_|")
+            for _ in 0..chars.len() {
+                print!("_|");
+            }
+            print!("\n");
         }
     }
 }
